@@ -1,10 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell } from 'recharts';
+
+interface StageData {
+  stage: string;
+  avgDays: number;
+}
 
 export default function TimeInStageChart({ loading }: { loading: boolean }) {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<StageData[]>([]);
 
   useEffect(() => {
     fetch('/api/leads/time-in-stage')
@@ -28,11 +33,8 @@ export default function TimeInStageChart({ loading }: { loading: boolean }) {
           <BarChart data={data} layout="vertical" margin={{ left: 10 }}>
             <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 10 }} unit="d" />
             <YAxis type="category" dataKey="stage" tick={{ fill: '#d1d5db', fontSize: 11 }} width={100} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8 }}
-            />
             <Bar dataKey="avgDays" radius={[0, 4, 4, 0]}>
-              {data.map((_: any, i: number) => (
+              {data.map((_: StageData, i: number) => (
                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
             </Bar>
