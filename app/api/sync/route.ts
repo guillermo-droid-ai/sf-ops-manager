@@ -1,6 +1,6 @@
 // POST /api/sync — pulls fresh data from Salesforce and stores snapshot in Supabase
 // Called by Vercel Cron every 30 minutes
-// Protected by CRON_SECRET header
+// Protected by CRON_TOKEN header
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getActiveLeads, getLeadStatusHistory, getOpportunities, getTransactions, getRecentTasks, getActiveUsers } from '@/lib/queries';
@@ -10,7 +10,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 export async function POST(req: NextRequest) {
   // Auth check
   const secret = req.headers.get('x-cron-secret');
-  if (secret !== process.env.CRON_SECRET) {
+  if (secret !== process.env.CRON_TOKEN) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
 // Also allow GET for manual trigger from dashboard
 export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get('secret');
-  if (secret !== process.env.CRON_SECRET) {
+  if (secret !== process.env.CRON_TOKEN) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   return POST(req);

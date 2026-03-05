@@ -37,7 +37,7 @@ export default function Dashboard() {
   async function triggerSync() {
     setSyncing(true);
     try {
-      await fetch(`/api/sync?secret=${process.env.NEXT_PUBLIC_CRON_SECRET || ''}`);
+      await fetch(`/api/sync?secret=${process.env.NEXT_PUBLIC_CRON_TOKEN || ''}`);
       await fetchData();
     } catch (e) {
       console.error(e);
