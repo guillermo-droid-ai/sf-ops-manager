@@ -1,56 +1,68 @@
-// Salesforce API client using OAuth2 username-password flow
-// All queries run server-side only — credentials never exposed to browser
+// Salesforce client using SOAP login — no Connected App required
+// Just needs SF_USERNAME + SF_PASSWORD (+ optional SF_SECURITY_TOKEN)
+// Session is cached for 2 hours server-side
 
-const SF_BASE_URL = process.env.SF_LOGIN_URL || 'https://login.salesforce.com';
+const SF_LOGIN_URL = process.env.SF_LOGIN_URL || 'https://login.salesforce.com';
 
-interface SFAuthResponse {
-  access_token: string;
-  instance_url: string;
-  token_type: string;
+interface SFSession {
+  sessionId: string;
+  instanceUrl: string;
+  expiresAt: number;
 }
 
-let _cachedToken: { token: string; instanceUrl: string; expiresAt: number } | null = null;
+let _session: SFSession | null = null;
 
-export async function getSFToken(): Promise<{ token: string; instanceUrl: string }> {
-  // Reuse token for 1 hour
-  if (_cachedToken && Date.now() < _cachedToken.expiresAt) {
-    return { token: _cachedToken.token, instanceUrl: _cachedToken.instanceUrl };
-  }
+export async function getSFSession(): Promise<SFSession> {
+  if (_session && Date.now() < _session.expiresAt) return _session;
 
-  const params = new URLSearchParams({
-    grant_type: 'password',
-    client_id: process.env.SF_CLIENT_ID!,
-    client_secret: process.env.SF_CLIENT_SECRET!,
-    username: process.env.SF_USERNAME!,
-    password: `${process.env.SF_PASSWORD}${process.env.SF_SECURITY_TOKEN || ''}`,
-  });
+  const username = process.env.SF_USERNAME!;
+  const password = `${process.env.SF_PASSWORD}${process.env.SF_SECURITY_TOKEN || ''}`;
 
-  const res = await fetch(`${SF_BASE_URL}/services/oauth2/token`, {
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:urn="urn:partner.soap.sforce.com">
+  <soapenv:Body>
+    <urn:login>
+      <urn:username>${username}</urn:username>
+      <urn:password>${password}</urn:password>
+    </urn:login>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+  const res = await fetch(`${SF_LOGIN_URL}/services/Soap/u/63.0`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
+    headers: {
+      'Content-Type': 'text/xml; charset=UTF-8',
+      SOAPAction: 'login',
+    },
+    body: soapBody,
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Salesforce auth failed: ${err}`);
+  const xml = await res.text();
+
+  if (!res.ok || xml.includes('faultstring')) {
+    const fault = xml.match(/<faultstring>(.*?)<\/faultstring>/)?.[1] || 'Unknown error';
+    throw new Error(`Salesforce SOAP login failed: ${fault}`);
   }
 
-  const data: SFAuthResponse = await res.json();
-  _cachedToken = {
-    token: data.access_token,
-    instanceUrl: data.instance_url,
-    expiresAt: Date.now() + 55 * 60 * 1000, // 55 min
-  };
+  const sessionId = xml.match(/<sessionId>(.*?)<\/sessionId>/)?.[1];
+  const serverUrl = xml.match(/<serverUrl>(.*?)<\/serverUrl>/)?.[1];
 
-  return { token: data.access_token, instanceUrl: data.instance_url };
+  if (!sessionId || !serverUrl) throw new Error('Could not parse SF login response');
+
+  // Extract instance URL from serverUrl (e.g. https://na1.salesforce.com/services/...)
+  const instanceUrl = serverUrl.match(/(https:\/\/[^/]+)/)?.[1] || '';
+
+  _session = { sessionId, instanceUrl, expiresAt: Date.now() + 2 * 60 * 60 * 1000 };
+  return _session;
 }
 
 export async function sfQuery<T = Record<string, unknown>>(soql: string): Promise<T[]> {
-  const { token, instanceUrl } = await getSFToken();
+  const { sessionId, instanceUrl } = await getSFSession();
   const encoded = encodeURIComponent(soql);
+
   const res = await fetch(`${instanceUrl}/services/data/v63.0/query/?q=${encoded}`, {
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${sessionId}`, 'Content-Type': 'application/json' },
   });
 
   if (!res.ok) {
@@ -65,7 +77,7 @@ export async function sfQuery<T = Record<string, unknown>>(soql: string): Promis
   let nextUrl = data.nextRecordsUrl;
   while (nextUrl) {
     const pageRes = await fetch(`${instanceUrl}${nextUrl}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${sessionId}` },
     });
     const pageData = await pageRes.json();
     records = records.concat(pageData.records || []);
@@ -75,11 +87,16 @@ export async function sfQuery<T = Record<string, unknown>>(soql: string): Promis
   return records as T[];
 }
 
-export async function sfUpdate(objectType: string, id: string, fields: Record<string, unknown>): Promise<void> {
-  const { token, instanceUrl } = await getSFToken();
+export async function sfUpdate(
+  objectType: string,
+  id: string,
+  fields: Record<string, unknown>
+): Promise<void> {
+  const { sessionId, instanceUrl } = await getSFSession();
+
   const res = await fetch(`${instanceUrl}/services/data/v63.0/sobjects/${objectType}/${id}`, {
     method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${sessionId}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(fields),
   });
 
