@@ -1,7 +1,5 @@
 -- Trinity Ops Manager — Supabase Schema
--- Run this in Supabase SQL editor to set up all tables
 
--- ─── SNAPSHOTS (trend data) ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS snapshots (
   id BIGSERIAL PRIMARY KEY,
   captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -12,12 +10,12 @@ CREATE TABLE IF NOT EXISTS snapshots (
   stale_leads_count INTEGER DEFAULT 0,
   rep_count INTEGER DEFAULT 0
 );
-
 CREATE INDEX IF NOT EXISTS idx_snapshots_captured_at ON snapshots (captured_at DESC);
+ALTER TABLE snapshots ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service role all" ON snapshots FOR ALL TO service_role USING (true);
 
--- ─── LEADS (cached from SF) ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS leads (
-  id TEXT PRIMARY KEY, -- Salesforce Id
+  id TEXT PRIMARY KEY,
   first_name TEXT,
   last_name TEXT,
   status TEXT,
@@ -35,12 +33,12 @@ CREATE TABLE IF NOT EXISTS leads (
   city TEXT,
   synced_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS idx_leads_owner_id ON leads (owner_id);
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads (status);
 CREATE INDEX IF NOT EXISTS idx_leads_is_converted ON leads (is_converted);
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service role all" ON leads FOR ALL TO service_role USING (true);
 
--- ─── REP STATS (calculated, refreshed on sync) ────────────────────────────────
 CREATE TABLE IF NOT EXISTS rep_stats (
   "ownerId" TEXT PRIMARY KEY,
   "ownerName" TEXT,
@@ -53,8 +51,9 @@ CREATE TABLE IF NOT EXISTS rep_stats (
   "tasksLogged" INTEGER DEFAULT 0,
   synced_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE rep_stats ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service role all" ON rep_stats FOR ALL TO service_role USING (true);
 
--- ─── OPPORTUNITY CACHE ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS opportunities (
   id TEXT PRIMARY KEY,
   name TEXT,
@@ -71,18 +70,7 @@ CREATE TABLE IF NOT EXISTS opportunities (
   probability INTEGER,
   synced_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS idx_opps_owner_id ON opportunities (owner_id);
 CREATE INDEX IF NOT EXISTS idx_opps_stage ON opportunities (stage_name);
-
--- ─── ROW LEVEL SECURITY (disable for service role access) ─────────────────────
-ALTER TABLE snapshots ENABLE ROW LEVEL SECURITY;
-ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
-ALTER TABLE rep_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE opportunities ENABLE ROW LEVEL SECURITY;
-
--- Allow service role full access (used server-side)
-CREATE POLICY "service role all" ON snapshots FOR ALL TO service_role USING (true);
-CREATE POLICY "service role all" ON leads FOR ALL TO service_role USING (true);
-CREATE POLICY "service role all" ON rep_stats FOR ALL TO service_role USING (true);
 CREATE POLICY "service role all" ON opportunities FOR ALL TO service_role USING (true);
