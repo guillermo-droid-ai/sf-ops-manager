@@ -30,7 +30,7 @@ export default function TimeInStageChart({ loading }: { loading: boolean }) {
             <YAxis type="category" dataKey="stage" tick={{ fill: '#d1d5db', fontSize: 11 }} width={100} />
             <Tooltip
               contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8 }}
-              formatter={(v: number) => [`${v} days`, 'Avg time']}
+              formatter={(v: number | undefined) => [`${v ?? 0} days`, 'Avg time']}
             />
             <Bar dataKey="avgDays" radius={[0, 4, 4, 0]}>
               {data.map((_: any, i: number) => (
