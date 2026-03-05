@@ -1,37 +1,59 @@
-import { clsx } from 'clsx';
+'use client';
 
-const colors = {
-  blue: 'bg-blue-600/20 text-blue-400 border-blue-700/50',
-  green: 'bg-green-600/20 text-green-400 border-green-700/50',
-  red: 'bg-red-600/20 text-red-400 border-red-700/50',
-  yellow: 'bg-yellow-600/20 text-yellow-400 border-yellow-700/50',
-  gray: 'bg-gray-700/20 text-gray-400 border-gray-700/50',
-};
+import { LucideIcon } from 'lucide-react';
+import clsx from 'clsx';
 
 interface StatCardProps {
-  label: string;
+  title: string;
   value: string | number;
-  sub?: string;
-  icon?: React.ReactNode;
-  color?: keyof typeof colors;
-  loading?: boolean;
+  subtitle?: string;
+  icon?: LucideIcon;
+  trend?: 'up' | 'down' | 'neutral';
+  variant?: 'default' | 'warning' | 'danger' | 'success';
 }
 
-export default function StatCard({ label, value, sub, icon, color = 'blue', loading }: StatCardProps) {
+export function StatCard({ title, value, subtitle, icon: Icon, trend, variant = 'default' }: StatCardProps) {
+  const variantStyles = {
+    default: 'bg-gray-800 border-gray-700',
+    warning: 'bg-yellow-900/30 border-yellow-600/50',
+    danger: 'bg-red-900/30 border-red-600/50',
+    success: 'bg-green-900/30 border-green-600/50'
+  };
+
+  const valueStyles = {
+    default: 'text-white',
+    warning: 'text-yellow-400',
+    danger: 'text-red-400',
+    success: 'text-green-400'
+  };
+
   return (
-    <div className={clsx('rounded-xl border p-4', colors[color])}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</p>
-          {loading ? (
-            <div className="h-8 w-16 bg-gray-700 animate-pulse rounded mt-1" />
-          ) : (
-            <p className="text-3xl font-bold text-white mt-1">{value}</p>
-          )}
-          {sub && <p className="text-xs text-gray-500 mt-1">{sub}</p>}
-        </div>
-        <div className="opacity-60">{icon}</div>
+    <div className={clsx(
+      'rounded-lg border p-4 transition-all hover:border-gray-600',
+      variantStyles[variant]
+    )}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-gray-400">{title}</p>
+        {Icon && <Icon className="h-5 w-5 text-gray-500" />}
       </div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <p className={clsx('text-2xl font-bold', valueStyles[variant])}>
+          {typeof value === 'number' ? value.toLocaleString() : value}
+        </p>
+        {trend && (
+          <span className={clsx(
+            'text-xs font-medium',
+            trend === 'up' && 'text-green-500',
+            trend === 'down' && 'text-red-500',
+            trend === 'neutral' && 'text-gray-500'
+          )}>
+            {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'}
+          </span>
+        )}
+      </div>
+      {subtitle && (
+        <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+      )}
     </div>
   );
 }

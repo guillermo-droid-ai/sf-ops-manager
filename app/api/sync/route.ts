@@ -1,100 +1,185 @@
-// POST /api/sync — pulls fresh data from Salesforce and stores snapshot in Supabase
-// Called by Vercel Cron every 30 minutes
-// Protected by CRON_TOKEN header
-
-import { NextRequest, NextResponse } from 'next/server';
-import { getActiveLeads, getLeadStatusHistory, getOpportunities, getTransactions, getRecentTasks, getActiveUsers } from '@/lib/queries';
-import { buildPipelineSummary, findStaleLeads, calcRepPerformance, calcLeadTimeInStatus } from '@/lib/analytics';
+import { NextResponse } from 'next/server';
+import { fetchAllLeads, fetchAllOpportunities, fetchAllTransactions, fetchUserMap } from '@/lib/queries';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import type { SFLead, SFOpportunity, SFTransaction } from '@/lib/types';
 
-export async function POST(req: NextRequest) {
-  // Auth check
-  const secret = req.headers.get('x-cron-secret');
-  if (secret !== process.env.CRON_TOKEN) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Allow up to 60 seconds for sync
 
-  try {
-    const db = getSupabaseAdmin();
-
-    // 1. Pull from Salesforce
-    const [leads, leadHistory, opportunities, transactions, tasks, users] = await Promise.all([
-      getActiveLeads(),
-      getLeadStatusHistory(),
-      getOpportunities(),
-      getTransactions().catch(() => []), // graceful fail if object name wrong
-      getRecentTasks(30),
-      getActiveUsers(),
-    ]);
-
-    // 2. Compute analytics
-    const summary = buildPipelineSummary(leads, opportunities);
-    const staleLeads = findStaleLeads(leads, 7);
-    const repStats = calcRepPerformance(leads, tasks);
-    const timeInStatus = calcLeadTimeInStatus(leads, leadHistory);
-
-    const snapshot = {
-      captured_at: new Date().toISOString(),
-      summary,
-      stale_leads_count: staleLeads.length,
-      rep_count: repStats.length,
-      lead_count: leads.length,
-      opportunity_count: opportunities.length,
-      transaction_count: transactions.length,
-    };
-
-    // 3. Store snapshot in Supabase for trend tracking
-    await db.from('snapshots').insert(snapshot);
-
-    // 4. Upsert current state tables
-    if (leads.length > 0) {
-      const rows = leads.map((l) => ({
-        id: l.Id,
-        first_name: l.FirstName,
-        last_name: l.LastName,
-        status: l.Status,
-        owner_id: l.OwnerId,
-        owner_name: l.Owner?.Name,
-        created_date: l.CreatedDate,
-        last_modified: l.LastModifiedDate,
-        last_activity: l.LastActivityDate,
-        lead_source: l.LeadSource,
-        is_converted: l.IsConverted,
-        converted_date: l.ConvertedDate,
-        phone: l.Phone,
-        email: l.Email,
-        state: l.State,
-        city: l.City,
-        synced_at: new Date().toISOString(),
-      }));
-      // Upsert in batches of 500
-      for (let i = 0; i < rows.length; i += 500) {
-        await db.from('leads').upsert(rows.slice(i, i + 500), { onConflict: 'id' });
-      }
-    }
-
-    if (repStats.length > 0) {
-      const rows = repStats.map((r) => ({ ...r, synced_at: new Date().toISOString() }));
-      await db.from('rep_stats').upsert(rows, { onConflict: 'ownerId' });
-    }
-
-    return NextResponse.json({
-      ok: true,
-      synced: { leads: leads.length, opportunities: opportunities.length, transactions: transactions.length },
-      staleLeads: staleLeads.length,
-      reps: repStats.length,
-    });
-  } catch (err: unknown) {
-    console.error('Sync error:', err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
-  }
+interface SyncResult {
+  leads: number;
+  opportunities: number;
+  transactions: number;
+  errors: string[];
 }
 
-// Also allow GET for manual trigger from dashboard
-export async function GET(req: NextRequest) {
-  const secret = req.nextUrl.searchParams.get('secret');
-  if (secret !== process.env.CRON_TOKEN) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function POST() {
+  const supabase = getSupabaseAdmin();
+  const result: SyncResult = {
+    leads: 0,
+    opportunities: 0,
+    transactions: 0,
+    errors: []
+  };
+  
+  try {
+    // Log sync start
+    const { data: syncLogEntry } = await supabase
+      .from('sync_log')
+      .insert({ sync_type: 'full', status: 'in_progress' })
+      .select('id')
+      .single();
+    
+    const syncLogId = syncLogEntry?.id;
+    
+    // Fetch all data in parallel
+    const [leads, opps, transactions, userMap] = await Promise.all([
+      fetchAllLeads().catch(e => { result.errors.push(`Leads: ${e.message}`); return [] as SFLead[]; }),
+      fetchAllOpportunities().catch(e => { result.errors.push(`Opps: ${e.message}`); return [] as SFOpportunity[]; }),
+      fetchAllTransactions().catch(e => { result.errors.push(`Transactions: ${e.message}`); return [] as SFTransaction[]; }),
+      fetchUserMap().catch(() => new Map<string, string>())
+    ]);
+    
+    // Sync leads
+    if (leads.length > 0) {
+      const leadRows = leads.map(l => ({
+        id: l.Id,
+        name: l.Name,
+        status: l.Status,
+        owner_id: l.OwnerId,
+        owner_name: l.Owner?.Name || null,
+        created_date: l.CreatedDate,
+        last_activity_date: l.LastActivityDate,
+        is_converted: l.IsConverted,
+        phone: l.Phone || null,
+        email: l.Email || null,
+        company: l.Company || null,
+        synced_at: new Date().toISOString()
+      }));
+      
+      // Upsert in batches of 500
+      for (let i = 0; i < leadRows.length; i += 500) {
+        const batch = leadRows.slice(i, i + 500);
+        const { error } = await supabase
+          .from('leads')
+          .upsert(batch, { onConflict: 'id' });
+        
+        if (error) {
+          result.errors.push(`Leads batch ${i}: ${error.message}`);
+        } else {
+          result.leads += batch.length;
+        }
+      }
+    }
+    
+    // Sync opportunities
+    if (opps.length > 0) {
+      const oppRows = opps.map(o => ({
+        id: o.Id,
+        name: o.Name,
+        stage_name: o.StageName,
+        owner_id: o.OwnerId,
+        owner_name: o.Owner?.Name || null,
+        amount: o.Amount,
+        close_date: o.CloseDate,
+        created_date: o.CreatedDate,
+        last_activity_date: o.LastActivityDate,
+        lead_source: o.LeadSource || null,
+        is_closed: o.IsClosed,
+        is_won: o.IsWon,
+        synced_at: new Date().toISOString()
+      }));
+      
+      for (let i = 0; i < oppRows.length; i += 500) {
+        const batch = oppRows.slice(i, i + 500);
+        const { error } = await supabase
+          .from('opportunities')
+          .upsert(batch, { onConflict: 'id' });
+        
+        if (error) {
+          result.errors.push(`Opps batch ${i}: ${error.message}`);
+        } else {
+          result.opportunities += batch.length;
+        }
+      }
+    }
+    
+    // Sync transactions
+    if (transactions.length > 0) {
+      const txRows = transactions.map(t => ({
+        id: t.Id,
+        name: t.Name,
+        path_stage: t.Left_Main__Path__c,
+        dispo_status: t.Left_Main__Dispo_Status__c,
+        disposition_decision: t.Left_Main__Disposition_Decision__c,
+        acquisition_rep_id: t.Left_Main__Acquisition_Rep__c,
+        acquisition_rep_name: t.Left_Main__Acquisition_Rep__c 
+          ? (userMap.get(t.Left_Main__Acquisition_Rep__c) || null) 
+          : null,
+        dispositions_rep_id: t.Left_Main__Dispositions_Rep__c,
+        dispositions_rep_name: t.Left_Main__Dispositions_Rep__c
+          ? (userMap.get(t.Left_Main__Dispositions_Rep__c) || null)
+          : null,
+        contract_assignment_price: t.Left_Main__Contract_Assignment_Price__c,
+        assignment_fee: t.Assignment_Fee__c,
+        net_profit: t.Left_Main__NetProfit__c,
+        closing_date: t.Left_Main__Closing_Date__c,
+        created_date: t.CreatedDate,
+        last_activity_date: t.LastActivityDate,
+        pending_stage: t.Pending_Stage__c || null,
+        marketing_stage: t.Marketing_Stage__c || null,
+        showing_status: t.Showing_Status__c || null,
+        assigned_stage: t.Assigned_Stage__c || null,
+        synced_at: new Date().toISOString()
+      }));
+      
+      for (let i = 0; i < txRows.length; i += 500) {
+        const batch = txRows.slice(i, i + 500);
+        const { error } = await supabase
+          .from('transactions')
+          .upsert(batch, { onConflict: 'id' });
+        
+        if (error) {
+          result.errors.push(`Transactions batch ${i}: ${error.message}`);
+        } else {
+          result.transactions += batch.length;
+        }
+      }
+    }
+    
+    // Update sync log
+    if (syncLogId) {
+      await supabase
+        .from('sync_log')
+        .update({
+          status: result.errors.length > 0 ? 'partial' : 'success',
+          records_synced: result.leads + result.opportunities + result.transactions,
+          error_message: result.errors.length > 0 ? result.errors.join('; ') : null,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', syncLogId);
+    }
+    
+    return NextResponse.json({
+      success: result.errors.length === 0,
+      synced: {
+        leads: result.leads,
+        opportunities: result.opportunities,
+        transactions: result.transactions,
+        total: result.leads + result.opportunities + result.transactions
+      },
+      errors: result.errors.length > 0 ? result.errors : undefined
+    });
+    
+  } catch (error) {
+    console.error('Sync error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Sync failed',
+        synced: result
+      },
+      { status: 500 }
+    );
   }
-  return POST(req);
 }

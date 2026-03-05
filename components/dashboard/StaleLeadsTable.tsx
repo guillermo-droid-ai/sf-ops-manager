@@ -1,124 +1,70 @@
 'use client';
 
-import { useState } from 'react';
-import { Phone, Mail, Clock } from 'lucide-react';
-import { clsx } from 'clsx';
+import type { StaleLead } from '@/lib/types';
 
-interface StaleLead {
-  id: string;
-  name: string;
-  status: string;
-  owner: string;
-  daysStale: number;
-  lastActivity: string | null;
-  phone: string | null;
-  email: string | null;
+interface StaleLeadsTableProps {
+  data: StaleLead[];
+  daysFilter: number;
+  onFilterChange: (days: number) => void;
 }
 
-export default function StaleLeadsTable({
-  leads,
-  loading,
-  onRefresh,
-}: {
-  leads: StaleLead[];
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  const [filter, setFilter] = useState<'7' | '14' | '30'>('7');
-
-  const thresholds = { '7': 7, '14': 14, '30': 30 };
-  const filtered = leads.filter((l) => l.daysStale >= thresholds[filter]);
-
+export function StaleLeadsTable({ data, daysFilter, onFilterChange }: StaleLeadsTableProps) {
   return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-        <div>
-          <h2 className="text-sm font-semibold text-white">Stale Leads</h2>
-          <p className="text-xs text-gray-500">{filtered.length} leads need attention</p>
-        </div>
-        <div className="flex gap-1">
-          {(['7', '14', '30'] as const).map((d) => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-white">Stale Leads</h3>
+        <div className="flex gap-2">
+          {[7, 14, 30].map((days) => (
             <button
-              key={d}
-              onClick={() => setFilter(d)}
-              className={clsx(
-                'text-xs px-3 py-1 rounded-md font-medium transition',
-                filter === d
-                  ? 'bg-red-600 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              )}
+              key={days}
+              onClick={() => onFilterChange(days)}
+              className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                daysFilter === days
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
             >
-              {d}d+
+              {days}d+
             </button>
           ))}
         </div>
       </div>
-
-      {loading ? (
-        <div className="p-8 text-center text-gray-600 text-sm">Loading...</div>
-      ) : filtered.length === 0 ? (
-        <div className="p-8 text-center text-gray-600 text-sm">
-          🎉 No stale leads over {filter} days!
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-gray-500 uppercase border-b border-gray-800">
-                <th className="text-left px-5 py-3">Lead</th>
-                <th className="text-left px-4 py-3">Status</th>
-                <th className="text-left px-4 py-3">Owner</th>
-                <th className="text-left px-4 py-3">
-                  <Clock className="h-3 w-3 inline mr-1" />
-                  Days Stale
-                </th>
-                <th className="text-left px-4 py-3">Contact</th>
+      
+      <div className="overflow-x-auto max-h-96 overflow-y-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-gray-900">
+            <tr className="border-b border-gray-700 text-left text-gray-400">
+              <th className="pb-3 pr-4 font-medium">Lead Name</th>
+              <th className="pb-3 pr-4 font-medium">Status</th>
+              <th className="pb-3 pr-4 font-medium">Rep</th>
+              <th className="pb-3 pr-4 font-medium text-right">Days Stale</th>
+              <th className="pb-3 pr-4 font-medium">Phone</th>
+              <th className="pb-3 font-medium">Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((lead) => (
+              <tr key={lead.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                <td className="py-3 pr-4 text-white">{lead.name}</td>
+                <td className="py-3 pr-4 text-gray-300">{lead.status}</td>
+                <td className="py-3 pr-4 text-gray-400">{lead.repName}</td>
+                <td className="py-3 pr-4 text-right text-red-400 font-medium">
+                  {lead.daysSinceActivity}d
+                </td>
+                <td className="py-3 pr-4 text-gray-400">{lead.phone || '-'}</td>
+                <td className="py-3 text-gray-400 truncate max-w-xs">{lead.email || '-'}</td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {filtered.slice(0, 50).map((lead) => (
-                <tr key={lead.id} className="hover:bg-gray-800/50 transition">
-                  <td className="px-5 py-3 font-medium text-white">{lead.name}</td>
-                  <td className="px-4 py-3">
-                    <span className="bg-gray-800 text-gray-300 text-xs px-2 py-1 rounded-full">
-                      {lead.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-400">{lead.owner}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={clsx(
-                        'font-bold',
-                        lead.daysStale >= 30
-                          ? 'text-red-400'
-                          : lead.daysStale >= 14
-                          ? 'text-yellow-400'
-                          : 'text-orange-400'
-                      )}
-                    >
-                      {lead.daysStale}d
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      {lead.phone && (
-                        <a href={`tel:${lead.phone}`} className="text-blue-400 hover:text-blue-300">
-                          <Phone className="h-4 w-4" />
-                        </a>
-                      )}
-                      {lead.email && (
-                        <a href={`mailto:${lead.email}`} className="text-green-400 hover:text-green-300">
-                          <Mail className="h-4 w-4" />
-                        </a>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))}
+            {data.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-8 text-center text-gray-500">
+                  No stale leads found for this filter
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
