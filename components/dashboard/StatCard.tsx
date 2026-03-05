@@ -10,9 +10,10 @@ interface StatCardProps {
   icon?: LucideIcon;
   trend?: 'up' | 'down' | 'neutral';
   variant?: 'default' | 'warning' | 'danger' | 'success';
+  onClick?: () => void;
 }
 
-export function StatCard({ title, value, subtitle, icon: Icon, trend, variant = 'default' }: StatCardProps) {
+export function StatCard({ title, value, subtitle, icon: Icon, trend, variant = 'default', onClick }: StatCardProps) {
   const variantStyles = {
     default: 'bg-gray-800 border-gray-700',
     warning: 'bg-yellow-900/30 border-yellow-600/50',
@@ -28,10 +29,13 @@ export function StatCard({ title, value, subtitle, icon: Icon, trend, variant = 
   };
 
   return (
-    <div className={clsx(
-      'rounded-lg border p-4 transition-all hover:border-gray-600',
-      variantStyles[variant]
-    )}>
+    <div 
+      onClick={onClick}
+      className={clsx(
+        'rounded-lg border p-4 transition-all hover:border-gray-600',
+        variantStyles[variant],
+        onClick && 'cursor-pointer hover:ring-1 ring-blue-500'
+      )}>
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-gray-400">{title}</p>
         {Icon && <Icon className="h-5 w-5 text-gray-500" />}

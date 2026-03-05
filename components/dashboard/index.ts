@@ -9,3 +9,7 @@ export { ClosingSoonPanel } from './ClosingSoonPanel';
 export { ActiveDealsTable } from './ActiveDealsTable';
 export { StuckDealsTable } from './StuckDealsTable';
 export { OppRepTable } from './OppRepTable';
+export { DrillDownPanel } from './DrillDownPanel';
+export { StatusChangeModal } from './StatusChangeModal';
+export { ReassignModal } from './ReassignModal';
+export { DeleteConfirmModal } from './DeleteConfirmModal';

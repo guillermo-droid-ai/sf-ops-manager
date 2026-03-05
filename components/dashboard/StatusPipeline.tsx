@@ -5,9 +5,10 @@ import type { LeadStatusBreakdown } from '@/lib/types';
 
 interface StatusPipelineProps {
   data: LeadStatusBreakdown[];
+  onStatusClick?: (status: string) => void;
 }
 
-export function StatusPipeline({ data }: StatusPipelineProps) {
+export function StatusPipeline({ data, onStatusClick }: StatusPipelineProps) {
   const colorMap = {
     green: 'border-green-500 bg-green-900/20',
     yellow: 'border-yellow-500 bg-yellow-900/20',
@@ -27,9 +28,11 @@ export function StatusPipeline({ data }: StatusPipelineProps) {
         {data.map((status) => (
           <div
             key={status.status}
+            onClick={() => onStatusClick?.(status.status)}
             className={clsx(
               'flex-shrink-0 w-48 rounded-lg border-l-4 bg-gray-800 p-4',
-              colorMap[status.color]
+              colorMap[status.color],
+              onStatusClick && 'cursor-pointer hover:ring-1 ring-blue-500 transition-all'
             )}
           >
             <div className="flex items-center justify-between">

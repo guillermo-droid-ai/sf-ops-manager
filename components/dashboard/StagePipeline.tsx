@@ -6,9 +6,10 @@ import { formatCurrency } from '@/lib/analytics';
 
 interface StagePipelineProps {
   data: OppStageBreakdown[];
+  onStageClick?: (stage: string) => void;
 }
 
-export function StagePipeline({ data }: StagePipelineProps) {
+export function StagePipeline({ data, onStageClick }: StagePipelineProps) {
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-white">Opportunity Stage Pipeline</h3>
@@ -16,13 +17,15 @@ export function StagePipeline({ data }: StagePipelineProps) {
         {data.map((stage) => (
           <div
             key={stage.stage}
+            onClick={() => onStageClick?.(stage.stage)}
             className={clsx(
               'flex-shrink-0 w-48 rounded-lg border-l-4 p-4',
               stage.isGraveyard 
                 ? 'border-purple-500 bg-purple-900/20' 
                 : stage.isWarning 
                   ? 'border-red-500 bg-red-900/20'
-                  : 'border-blue-500 bg-gray-800'
+                  : 'border-blue-500 bg-gray-800',
+              onStageClick && 'cursor-pointer hover:ring-1 ring-blue-500 transition-all'
             )}
           >
             <div className="flex items-center justify-between">

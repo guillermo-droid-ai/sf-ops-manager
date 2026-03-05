@@ -105,3 +105,34 @@ export async function sfUpdate(
     throw new Error(`SF update failed: ${err}`);
   }
 }
+
+export async function sfDelete(objectType: string, id: string): Promise<void> {
+  const { sessionId, instanceUrl } = await getSFSession();
+
+  const res = await fetch(`${instanceUrl}/services/data/v63.0/sobjects/${objectType}/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${sessionId}` },
+  });
+
+  if (!res.ok && res.status !== 204) {
+    const err = await res.text();
+    throw new Error(`SF delete failed: ${err}`);
+  }
+}
+
+export async function sfQueryCount(soql: string): Promise<number> {
+  const { sessionId, instanceUrl } = await getSFSession();
+  const encoded = encodeURIComponent(soql);
+
+  const res = await fetch(`${instanceUrl}/services/data/v63.0/query/?q=${encoded}`, {
+    headers: { Authorization: `Bearer ${sessionId}`, 'Content-Type': 'application/json' },
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`SOQL count query failed: ${err}\nQuery: ${soql}`);
+  }
+
+  const data = await res.json();
+  return data.totalSize || 0;
+}

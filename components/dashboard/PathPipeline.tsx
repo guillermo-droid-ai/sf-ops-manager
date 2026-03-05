@@ -6,9 +6,10 @@ import { formatCurrency } from '@/lib/analytics';
 
 interface PathPipelineProps {
   data: TransactionPathBreakdown[];
+  onPathClick?: (path: string) => void;
 }
 
-export function PathPipeline({ data }: PathPipelineProps) {
+export function PathPipeline({ data, onPathClick }: PathPipelineProps) {
   // Filter out closed statuses for main pipeline view
   const activePaths = data.filter(p => 
     !['Cancelled Contract/Lost', 'Closed/Memo', 'Closed/Won', 'Closed - Realtor Referral'].includes(p.path)
@@ -21,11 +22,13 @@ export function PathPipeline({ data }: PathPipelineProps) {
         {activePaths.map((path) => (
           <div
             key={path.path}
+            onClick={() => onPathClick?.(path.path)}
             className={clsx(
               'flex-shrink-0 w-40 rounded-lg border-l-4 p-3',
               path.isBlocked 
                 ? 'border-red-500 bg-red-900/30' 
-                : 'border-emerald-500 bg-gray-800'
+                : 'border-emerald-500 bg-gray-800',
+              onPathClick && 'cursor-pointer hover:ring-1 ring-blue-500 transition-all'
             )}
           >
             <h4 className={clsx(

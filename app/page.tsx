@@ -13,14 +13,25 @@ import {
   ClosingSoonPanel,
   ActiveDealsTable,
   StuckDealsTable,
-  OppRepTable
+  OppRepTable,
+  DrillDownPanel
 } from '@/components/dashboard';
+import { ToastProvider } from '@/components/ui/Toast';
 import { formatCurrency } from '@/lib/analytics';
 import type { LeadsDashboardData, OppsDashboardData, TransactionsDashboardData } from '@/lib/types';
 
 type Tab = 'leads' | 'opportunities' | 'transactions';
+type RecordType = 'lead' | 'opportunity' | 'transaction';
 
-export default function Dashboard() {
+interface DrillDownState {
+  open: boolean;
+  title: string;
+  subtitle: string;
+  type: RecordType;
+  filters: { status?: string; ownerId?: string; ownerName?: string };
+}
+
+function DashboardContent() {
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
   const [leadsData, setLeadsData] = useState<LeadsDashboardData | null>(null);
   const [oppsData, setOppsData] = useState<OppsDashboardData | null>(null);
@@ -30,6 +41,34 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [staleDaysFilter, setStaleDaysFilter] = useState(7);
+
+  // Drill-down panel state
+  const [drillDown, setDrillDown] = useState<DrillDownState>({
+    open: false,
+    title: '',
+    subtitle: '',
+    type: 'lead',
+    filters: {},
+  });
+
+  const openDrillDown = (
+    type: RecordType,
+    title: string,
+    subtitle: string,
+    filters: DrillDownState['filters']
+  ) => {
+    setDrillDown({
+      open: true,
+      type,
+      title,
+      subtitle,
+      filters,
+    });
+  };
+
+  const closeDrillDown = () => {
+    setDrillDown((prev) => ({ ...prev, open: false }));
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -193,6 +232,7 @@ export default function Dashboard() {
                   title="Total Active"
                   value={leadsData.stats.totalActive}
                   icon={Users}
+                  onClick={() => openDrillDown('lead', 'All Active Leads', 'All non-converted leads', {})}
                 />
                 <StatCard
                   title="Hot Leads"
@@ -200,17 +240,20 @@ export default function Dashboard() {
                   subtitle="New + Working"
                   variant="success"
                   icon={CheckCircle}
+                  onClick={() => openDrillDown('lead', 'Hot Leads', 'New and Working statuses', { status: 'New' })}
                 />
                 <StatCard
                   title="Pipeline"
                   value={leadsData.stats.pipelineLeads}
                   subtitle="Qualified + Offer + Appt"
+                  onClick={() => openDrillDown('lead', 'Pipeline Leads', 'Qualified, Offer, Appointment', { status: 'Qualified' })}
                 />
                 <StatCard
                   title="Unqualified"
                   value={leadsData.stats.unqualified}
                   variant={leadsData.stats.unqualified > 1000 ? 'danger' : 'default'}
                   icon={AlertTriangle}
+                  onClick={() => openDrillDown('lead', 'Unqualified Leads', 'Leads marked as unqualified', { status: 'Unqualified' })}
                 />
                 <StatCard
                   title="Unassigned"
@@ -221,7 +264,10 @@ export default function Dashboard() {
               </div>
 
               {/* Status Pipeline */}
-              <StatusPipeline data={leadsData.statusBreakdown} />
+              <StatusPipeline 
+                data={leadsData.statusBreakdown} 
+                onStatusClick={(status) => openDrillDown('lead', `${status} Leads`, `Leads with status: ${status}`, { status })}
+              />
 
               {/* Rep Accountability */}
               <RepAccountabilityTable data={leadsData.repStats} />
@@ -244,6 +290,7 @@ export default function Dashboard() {
                   title="Total Open"
                   value={oppsData.stats.totalOpen}
                   icon={Target}
+                  onClick={() => openDrillDown('opportunity', 'All Open Opportunities', 'All non-closed opportunities', {})}
                 />
                 <StatCard
                   title="Active Pipeline"
@@ -261,6 +308,7 @@ export default function Dashboard() {
                   title="Closed Lost (Month)"
                   value={oppsData.stats.closedLostMonth}
                   variant={oppsData.stats.closedLostMonth > 20 ? 'warning' : 'default'}
+                  onClick={() => openDrillDown('opportunity', 'Closed Lost', 'Opportunities closed as lost this month', { status: 'Closed Lost' })}
                 />
                 <StatCard
                   title="Pipeline Value"
@@ -269,7 +317,10 @@ export default function Dashboard() {
               </div>
 
               {/* Stage Pipeline */}
-              <StagePipeline data={oppsData.stageBreakdown} />
+              <StagePipeline 
+                data={oppsData.stageBreakdown} 
+                onStageClick={(stage) => openDrillDown('opportunity', `${stage} Opportunities`, `Opportunities in stage: ${stage}`, { status: stage })}
+              />
 
               {/* Rep Performance */}
               <OppRepTable data={oppsData.repStats} />
@@ -288,16 +339,19 @@ export default function Dashboard() {
                   title="Active Transactions"
                   value={txData.stats.activeCount}
                   icon={FileText}
+                  onClick={() => openDrillDown('transaction', 'All Active Transactions', 'All active transactions', {})}
                 />
                 <StatCard
                   title="🔴 Blocked"
                   value={txData.stats.blockedCount}
                   variant={txData.stats.blockedCount > 0 ? 'danger' : 'success'}
+                  onClick={() => openDrillDown('transaction', 'Blocked Transactions', 'Transactions stuck in blocked paths', { status: 'On Hold' })}
                 />
                 <StatCard
                   title="Closing This Week"
                   value={txData.stats.closingThisWeek}
                   variant={txData.stats.closingThisWeek > 0 ? 'warning' : 'default'}
+                  onClick={() => openDrillDown('transaction', 'Closing Soon', 'Transactions closing this week', { status: 'Clear to Close' })}
                 />
                 <StatCard
                   title="Pipeline Value"
@@ -307,11 +361,15 @@ export default function Dashboard() {
                   title="Closed/Won (Month)"
                   value={`${txData.stats.closedWonMonth} | ${formatCurrency(txData.stats.closedWonMonthValue)}`}
                   variant="success"
+                  onClick={() => openDrillDown('transaction', 'Closed Won', 'Transactions closed this month', { status: 'Closed/Won' })}
                 />
               </div>
 
               {/* Path Pipeline */}
-              <PathPipeline data={txData.pathBreakdown} />
+              <PathPipeline 
+                data={txData.pathBreakdown} 
+                onPathClick={(path) => openDrillDown('transaction', `${path}`, `Transactions in path: ${path}`, { status: path })}
+              />
 
               {/* Blocked Deals - Most Important */}
               <BlockedDealsPanel data={txData.blockedDeals} />
@@ -325,6 +383,24 @@ export default function Dashboard() {
           )}
         </main>
       )}
+
+      {/* Drill-down Panel */}
+      <DrillDownPanel
+        open={drillDown.open}
+        onClose={closeDrillDown}
+        title={drillDown.title}
+        subtitle={drillDown.subtitle}
+        type={drillDown.type}
+        filters={drillDown.filters}
+      />
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <ToastProvider>
+      <DashboardContent />
+    </ToastProvider>
   );
 }
