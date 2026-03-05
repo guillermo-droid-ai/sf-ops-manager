@@ -1,90 +1,108 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sfQuery, sfQueryCount } from '@/lib/salesforce';
+import type { SFTransaction, SFUser, DrillTransactionRecord, DrillResponse } from '@/lib/types';
 
-interface DrillTransaction {
-  Id: string;
-  Name: string;
-  Left_Main__Path__c: string | null;
-  Left_Main__Dispo_Status__c: string | null;
-  Left_Main__Disposition_Decision__c: string | null;
-  Left_Main__Acquisition_Rep__c: string | null;
-  Left_Main__Dispositions_Rep__c: string | null;
-  OwnerId: string;
-  Owner?: { Name: string };
-  CreatedDate: string;
-  LastActivityDate: string | null;
-  Left_Main__Contract_Assignment_Price__c: number | null;
-  Left_Main__Closing_Date__c: string | null;
+const BLOCKED_PATHS = [
+  'On Hold',
+  'Title Issues', 
+  'Waiting on Funds',
+  'Cancellation Sent - Waiting to Sign'
+];
+
+function daysBetween(date1: Date, date2: Date): number {
+  const diffTime = Math.abs(date2.getTime() - date1.getTime());
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const searchParams = request.nextUrl.searchParams;
     const path = searchParams.get('path');
+    const blocked = searchParams.get('blocked');
     const ownerId = searchParams.get('ownerId');
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = 50;
     const offset = (page - 1) * limit;
 
-    // Build WHERE clause
+    // Build WHERE clauses
     const conditions: string[] = [];
+    
     if (path) {
       conditions.push(`Left_Main__Path__c = '${path.replace(/'/g, "\\'")}'`);
     }
-    if (ownerId) {
-      conditions.push(`OwnerId = '${ownerId.replace(/'/g, "\\'")}'`);
+    
+    if (blocked === 'true') {
+      const blockedConditions = BLOCKED_PATHS.map(p => `Left_Main__Path__c = '${p}'`);
+      conditions.push(`(${blockedConditions.join(' OR ')})`);
     }
+    
+    if (ownerId) {
+      conditions.push(`Left_Main__Acquisition_Rep__c = '${ownerId}'`);
+    }
+
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Get total count
-    const countSoql = `SELECT COUNT() FROM Left_Main__Transactions__c ${whereClause}`;
-    const totalCount = await sfQueryCount(countSoql);
+    const countQuery = `SELECT COUNT() FROM Left_Main__Transactions__c ${whereClause}`;
+    const total = await sfQueryCount(countQuery);
 
-    // Get paginated records
-    const soql = `
-      SELECT Id, Name, Left_Main__Path__c, Left_Main__Dispo_Status__c, 
-             Left_Main__Disposition_Decision__c, Left_Main__Acquisition_Rep__c,
-             Left_Main__Dispositions_Rep__c, OwnerId, Owner.Name, CreatedDate,
-             LastActivityDate, Left_Main__Contract_Assignment_Price__c, Left_Main__Closing_Date__c
+    // Get records
+    const dataQuery = `
+      SELECT Id, Name, Left_Main__Path__c, Left_Main__Acquisition_Rep__c, Left_Main__Dispositions_Rep__c,
+             Left_Main__Disposition_Decision__c, Left_Main__Contract_Assignment_Price__c, 
+             Left_Main__Closing_Date__c, LastModifiedDate, CreatedDate
       FROM Left_Main__Transactions__c
       ${whereClause}
-      ORDER BY LastActivityDate ASC NULLS FIRST
-      LIMIT ${limit} OFFSET ${offset}
-    `.trim();
+      ORDER BY LastModifiedDate DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+    
+    const transactions = await sfQuery<SFTransaction>(dataQuery);
+    const now = new Date();
 
-    const txs = await sfQuery<DrillTransaction>(soql);
-
-    // Transform for response
-    const records = txs.map((tx) => ({
-      id: tx.Id,
-      name: tx.Name,
-      path: tx.Left_Main__Path__c || '',
-      dispoStatus: tx.Left_Main__Dispo_Status__c || '',
-      dispoDecision: tx.Left_Main__Disposition_Decision__c || '',
-      acqRep: tx.Left_Main__Acquisition_Rep__c || '',
-      dispoRep: tx.Left_Main__Dispositions_Rep__c || '',
-      ownerId: tx.OwnerId,
-      ownerName: tx.Owner?.Name || 'Unknown',
-      createdDate: tx.CreatedDate,
-      lastActivityDate: tx.LastActivityDate,
-      contractPrice: tx.Left_Main__Contract_Assignment_Price__c,
-      closingDate: tx.Left_Main__Closing_Date__c,
-      daysSinceActivity: tx.LastActivityDate
-        ? Math.floor((Date.now() - new Date(tx.LastActivityDate).getTime()) / (1000 * 60 * 60 * 24))
-        : null,
-    }));
-
-    return NextResponse.json({
-      records,
-      totalCount,
-      page,
-      limit,
-      totalPages: Math.ceil(totalCount / limit),
+    // Get unique user IDs for name resolution
+    const userIds = new Set<string>();
+    transactions.forEach(t => {
+      if (t.Left_Main__Acquisition_Rep__c) userIds.add(t.Left_Main__Acquisition_Rep__c);
+      if (t.Left_Main__Dispositions_Rep__c) userIds.add(t.Left_Main__Dispositions_Rep__c);
     });
-  } catch (err) {
-    console.error('Drill transactions error:', err);
+
+    // Fetch user names
+    const userMap = new Map<string, string>();
+    if (userIds.size > 0) {
+      const userIdList = Array.from(userIds).map(id => `'${id}'`).join(',');
+      const users = await sfQuery<SFUser>(`SELECT Id, Name FROM User WHERE Id IN (${userIdList})`);
+      users.forEach(u => userMap.set(u.Id, u.Name));
+    }
+
+    const records: DrillTransactionRecord[] = transactions.map(trans => {
+      const daysInStage = daysBetween(new Date(trans.LastModifiedDate), now);
+
+      return {
+        id: trans.Id,
+        propertyAddress: trans.Name,
+        pathStage: trans.Left_Main__Path__c,
+        dispoDecision: trans.Left_Main__Disposition_Decision__c,
+        acqRepName: trans.Left_Main__Acquisition_Rep__c ? userMap.get(trans.Left_Main__Acquisition_Rep__c) || null : null,
+        dispoRepName: trans.Left_Main__Dispositions_Rep__c ? userMap.get(trans.Left_Main__Dispositions_Rep__c) || null : null,
+        daysInStage,
+        closingDate: trans.Left_Main__Closing_Date__c,
+        contractPrice: trans.Left_Main__Contract_Assignment_Price__c
+      };
+    });
+
+    const response: DrillResponse<DrillTransactionRecord> = {
+      records,
+      total,
+      page
+    };
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error('Drill transactions API error:', error);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to fetch transactions' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch transactions' },
       { status: 500 }
     );
   }

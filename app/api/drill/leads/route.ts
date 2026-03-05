@@ -1,89 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sfQuery, sfQueryCount } from '@/lib/salesforce';
+import type { SFLead, DrillLeadRecord, DrillResponse } from '@/lib/types';
 
-interface DrillLead {
-  Id: string;
-  FirstName: string | null;
-  LastName: string | null;
-  Status: string;
-  OwnerId: string;
-  Owner?: { Name: string };
-  CreatedDate: string;
-  LastActivityDate: string | null;
-  LeadSource: string | null;
-  Phone: string | null;
-  Email: string | null;
-  State: string | null;
-  City: string | null;
+function daysBetween(date1: Date, date2: Date): number {
+  const diffTime = Math.abs(date2.getTime() - date1.getTime());
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status');
     const ownerId = searchParams.get('ownerId');
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
+    const stale = searchParams.get('stale');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = 50;
     const offset = (page - 1) * limit;
 
-    // Build WHERE clause
+    // Build WHERE clauses
     const conditions: string[] = ['IsConverted = false'];
+    
     if (status) {
       conditions.push(`Status = '${status.replace(/'/g, "\\'")}'`);
     }
+    
     if (ownerId) {
-      conditions.push(`OwnerId = '${ownerId.replace(/'/g, "\\'")}'`);
+      conditions.push(`OwnerId = '${ownerId}'`);
     }
-    const whereClause = conditions.join(' AND ');
+    
+    if (stale === '14') {
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      conditions.push(`(LastActivityDate < ${fourteenDaysAgo.toISOString().split('T')[0]} OR LastActivityDate = null)`);
+    } else if (stale === '7') {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      conditions.push(`(LastActivityDate < ${sevenDaysAgo.toISOString().split('T')[0]} OR LastActivityDate = null)`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Get total count
-    const countSoql = `SELECT COUNT() FROM Lead WHERE ${whereClause}`;
-    const totalCount = await sfQueryCount(countSoql);
+    const countQuery = `SELECT COUNT() FROM Lead ${whereClause}`;
+    const total = await sfQueryCount(countQuery);
 
-    // Get paginated records
-    const soql = `
-      SELECT Id, FirstName, LastName, Status, OwnerId, Owner.Name, 
-             CreatedDate, LastActivityDate, LeadSource, Phone, Email, State, City
+    // Get records
+    const dataQuery = `
+      SELECT Id, FirstName, LastName, Status, OwnerId, CreatedDate, LastActivityDate, LeadSource, Phone, Email, State
       FROM Lead
-      WHERE ${whereClause}
+      ${whereClause}
       ORDER BY LastActivityDate ASC NULLS FIRST
-      LIMIT ${limit} OFFSET ${offset}
-    `.trim();
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+    
+    const leads = await sfQuery<SFLead>(dataQuery);
+    const now = new Date();
 
-    const leads = await sfQuery<DrillLead>(soql);
+    const records: DrillLeadRecord[] = leads.map(lead => {
+      const daysSinceActivity = lead.LastActivityDate 
+        ? daysBetween(new Date(lead.LastActivityDate), now)
+        : null;
 
-    // Transform for response
-    const records = leads.map((lead) => ({
-      id: lead.Id,
-      firstName: lead.FirstName || '',
-      lastName: lead.LastName || '',
-      name: `${lead.FirstName || ''} ${lead.LastName || ''}`.trim() || '(No Name)',
-      status: lead.Status,
-      ownerId: lead.OwnerId,
-      ownerName: lead.Owner?.Name || 'Unknown',
-      createdDate: lead.CreatedDate,
-      lastActivityDate: lead.LastActivityDate,
-      leadSource: lead.LeadSource || '',
-      phone: lead.Phone || '',
-      email: lead.Email || '',
-      state: lead.State || '',
-      city: lead.City || '',
-      daysSinceActivity: lead.LastActivityDate
-        ? Math.floor((Date.now() - new Date(lead.LastActivityDate).getTime()) / (1000 * 60 * 60 * 24))
-        : null,
-    }));
-
-    return NextResponse.json({
-      records,
-      totalCount,
-      page,
-      limit,
-      totalPages: Math.ceil(totalCount / limit),
+      return {
+        id: lead.Id,
+        name: [lead.FirstName, lead.LastName].filter(Boolean).join(' ') || 'No Name',
+        status: lead.Status,
+        leadSource: lead.LeadSource,
+        state: lead.State,
+        daysSinceActivity,
+        phone: lead.Phone,
+        lastActivityDate: lead.LastActivityDate
+      };
     });
-  } catch (err) {
-    console.error('Drill leads error:', err);
+
+    const response: DrillResponse<DrillLeadRecord> = {
+      records,
+      total,
+      page
+    };
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error('Drill leads API error:', error);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to fetch leads' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch leads' },
       { status: 500 }
     );
   }

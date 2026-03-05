@@ -1,212 +1,159 @@
-// Salesforce Object Types
+// Dashboard types
 
+export interface StatusCount {
+  status: string;
+  count: number;
+}
+
+export interface StageCount {
+  stage: string;
+  count: number;
+  totalAmount: number;
+}
+
+export interface PathCount {
+  path: string;
+  count: number;
+}
+
+export interface RepScore {
+  name: string;
+  ownerId: string;
+  leadsActive: number;
+  leadsStale7d: number;
+  oppPipeline: number;
+  transActive: number;
+  lastActivity: string | null;
+  score: 'A' | 'B' | 'C' | 'D';
+}
+
+export interface Alert {
+  type: string;
+  severity: 'red' | 'yellow' | 'green';
+  message: string;
+  filterKey: string;
+  filterValue: string;
+}
+
+export interface DashboardData {
+  leads: {
+    byStatus: StatusCount[];
+    total: number;
+    stale14d: number;
+  };
+  opportunities: {
+    byStage: StageCount[];
+    total: number;
+    closingSoon: number;
+  };
+  transactions: {
+    byPath: PathCount[];
+    total: number;
+    blocked: number;
+    closingThisWeek: number;
+  };
+  repScorecard: RepScore[];
+  alerts: Alert[];
+  lastSync: string;
+}
+
+// Salesforce record types
 export interface SFLead {
   Id: string;
-  Name: string;
+  FirstName: string | null;
+  LastName: string | null;
   Status: string;
   OwnerId: string;
-  Owner?: { Name: string };
   CreatedDate: string;
   LastActivityDate: string | null;
-  IsConverted: boolean;
-  Phone?: string;
-  Email?: string;
-  Company?: string;
+  LeadSource: string | null;
+  Phone: string | null;
+  Email: string | null;
+  State: string | null;
 }
 
 export interface SFOpportunity {
   Id: string;
   Name: string;
   StageName: string;
-  OwnerId: string;
-  Owner?: { Name: string };
   Amount: number | null;
   CloseDate: string;
+  OwnerId: string;
   CreatedDate: string;
   LastActivityDate: string | null;
-  LeadSource?: string;
   IsClosed: boolean;
   IsWon: boolean;
+  LeadSource: string | null;
 }
 
 export interface SFTransaction {
   Id: string;
   Name: string;
-  Left_Main__Path__c: string;
-  Left_Main__Dispo_Status__c: string | null;
-  Left_Main__Disposition_Decision__c: string | null;
+  Left_Main__Path__c: string | null;
   Left_Main__Acquisition_Rep__c: string | null;
   Left_Main__Dispositions_Rep__c: string | null;
+  Left_Main__Disposition_Decision__c: string | null;
   Left_Main__Contract_Assignment_Price__c: number | null;
-  Assignment_Fee__c: number | null;
-  Left_Main__NetProfit__c: number | null;
   Left_Main__Closing_Date__c: string | null;
+  LastModifiedDate: string;
   CreatedDate: string;
-  LastActivityDate: string | null;
-  Pending_Stage__c?: string;
-  Marketing_Stage__c?: string;
-  Showing_Status__c?: string;
-  Assigned_Stage__c?: string;
 }
 
 export interface SFUser {
   Id: string;
   Name: string;
-  Email: string;
   IsActive: boolean;
 }
 
-// Dashboard Data Types
-
-export interface LeadStats {
-  totalActive: number;
-  hotLeads: number; // New + Working
-  pipelineLeads: number; // Qualified + Offer + Appointment
-  unqualified: number;
-  unassigned: number;
-}
-
-export interface LeadStatusBreakdown {
-  status: string;
-  count: number;
-  avgDaysInStatus: number;
-  topReps: { name: string; count: number }[];
-  color: 'green' | 'yellow' | 'red';
-}
-
-export interface LeadRepStats {
-  repName: string;
-  totalAssigned: number;
-  newCount: number;
-  workingCount: number;
-  qualifiedCount: number;
-  offerCount: number;
-  unqualifiedCount: number;
-  avgDaysNoActivity: number;
-  lastActivity: string | null;
-  isWarning: boolean;
-}
-
-export interface StaleLead {
+// Drill-down response types
+export interface DrillLeadRecord {
   id: string;
   name: string;
   status: string;
-  repName: string;
-  daysSinceActivity: number;
+  leadSource: string | null;
+  state: string | null;
+  daysSinceActivity: number | null;
   phone: string | null;
-  email: string | null;
+  lastActivityDate: string | null;
 }
 
-export interface OppStats {
-  totalOpen: number;
-  activePipeline: number;
-  closedWonMonth: number;
-  closedLostMonth: number;
-  pipelineValue: number;
-}
-
-export interface OppStageBreakdown {
-  stage: string;
-  count: number;
-  value: number;
-  isGraveyard: boolean;
-  isWarning: boolean;
-}
-
-export interface OppRepStats {
-  repName: string;
-  totalOpps: number;
-  closingRate: number;
-  avgDaysToClose: number;
-  pipelineValue: number;
-  closedWonMonth: number;
-}
-
-export interface StuckDeal {
+export interface DrillOpportunityRecord {
   id: string;
   name: string;
   stage: string;
-  repName: string;
-  daysInStage: number;
-  closeDate: string | null;
-  isPastDue: boolean;
   amount: number | null;
+  daysUntilClose: number;
+  closeDate: string;
+  leadSource: string | null;
+  lastActivityDate: string | null;
 }
 
-export interface TransactionStats {
-  activeCount: number;
-  blockedCount: number;
-  closingThisWeek: number;
-  pipelineValue: number;
-  closedWonMonth: number;
-  closedWonMonthValue: number;
-}
-
-export interface TransactionPathBreakdown {
-  path: string;
-  count: number;
-  value: number;
-  isBlocked: boolean;
-}
-
-export interface BlockedDeal {
+export interface DrillTransactionRecord {
   id: string;
   propertyAddress: string;
-  acqRepName: string;
-  dispoRepName: string;
-  daysBlocked: number;
+  pathStage: string | null;
   dispoDecision: string | null;
-  contractPrice: number | null;
-  pathStage: string;
-}
-
-export interface ActiveTransaction {
-  id: string;
-  propertyAddress: string;
-  pathStage: string;
-  dispoDecision: string | null;
-  acqRepName: string;
-  dispoRepName: string;
+  acqRepName: string | null;
+  dispoRepName: string | null;
   daysInStage: number;
   closingDate: string | null;
   contractPrice: number | null;
-  status: 'overdue' | 'urgent' | 'ok';
 }
 
-export interface ClosingSoonDeal {
+export interface DrillResponse<T> {
+  records: T[];
+  total: number;
+  page: number;
+}
+
+// Blocked transaction for display
+export interface BlockedTransaction {
   id: string;
   propertyAddress: string;
-  closingDate: string;
-  daysUntilClose: number;
+  pathStage: string;
   dispoDecision: string | null;
+  acqRepName: string | null;
+  dispoRepName: string | null;
+  daysBlocked: number;
   contractPrice: number | null;
-  acqRepName: string;
-  dispoRepName: string;
-}
-
-// API Response Types
-
-export interface LeadsDashboardData {
-  stats: LeadStats;
-  statusBreakdown: LeadStatusBreakdown[];
-  repStats: LeadRepStats[];
-  staleLeads: StaleLead[];
-  lastSynced: string | null;
-}
-
-export interface OppsDashboardData {
-  stats: OppStats;
-  stageBreakdown: OppStageBreakdown[];
-  repStats: OppRepStats[];
-  stuckDeals: StuckDeal[];
-  lastSynced: string | null;
-}
-
-export interface TransactionsDashboardData {
-  stats: TransactionStats;
-  pathBreakdown: TransactionPathBreakdown[];
-  blockedDeals: BlockedDeal[];
-  activeDeals: ActiveTransaction[];
-  closingSoon: ClosingSoonDeal[];
-  lastSynced: string | null;
 }
