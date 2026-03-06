@@ -7,6 +7,8 @@ import { RepScorecard } from '@/components/dashboard/RepScorecard';
 import { BlockedTransactions } from '@/components/dashboard/BlockedTransactions';
 import VoiceWidget from '@/components/dashboard/VoiceWidget';
 import { DrillDownPanel } from '@/components/dashboard/DrillDownPanel';
+import { AIInsights } from '@/components/dashboard/AIInsights';
+import { ChartsSection } from '@/components/dashboard/ChartsSection';
 import { ToastContainer, useToast } from '@/components/ui/Toast';
 import type { DashboardData, Alert, BlockedTransaction } from '@/lib/types';
 
@@ -215,6 +217,16 @@ export default function Dashboard() {
             )}
           </button>
         ))}
+      </div>
+
+      {/* AI Insights Panel */}
+      <div className="mb-6">
+        <AIInsights onDrillDown={openDrill} />
+      </div>
+
+      {/* Charts Section */}
+      <div className="mb-6">
+        <ChartsSection activeTab={activeTab} />
       </div>
 
       {/* Pipeline Bars — show based on active tab */}

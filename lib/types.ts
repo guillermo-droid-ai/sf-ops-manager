@@ -157,3 +157,68 @@ export interface BlockedTransaction {
   daysBlocked: number;
   contractPrice: number | null;
 }
+
+// AI Insights types
+export interface Insight {
+  type: 'warning' | 'info' | 'success' | 'critical';
+  icon: string;
+  title: string;
+  detail: string;
+  action?: {
+    label: string;
+    filterKey: string;
+    filterValue: string;
+    drillType: 'leads' | 'opportunities' | 'transactions';
+  };
+}
+
+export interface InsightsData {
+  insights: Insight[];
+  generatedAt: string;
+}
+
+// Analytics/Charts types
+export interface LeadCreationTrend {
+  date: string;
+  count: number;
+}
+
+export interface LeadSourceBreakdown {
+  source: string;
+  count: number;
+  wonDeals: number;
+}
+
+export interface DataQualityMetric {
+  label: string;
+  value: number;
+  total: number;
+  percent: number;
+  color: string;
+}
+
+export interface StateBreakdown {
+  state: string;
+  count: number;
+}
+
+export interface CallAttemptsBucket {
+  bucket: string;
+  count: number;
+}
+
+export interface TransactionRevenue {
+  month: string;
+  contractValue: number;
+  count: number;
+}
+
+export interface AnalyticsData {
+  leadCreationTrend: LeadCreationTrend[];
+  leadSourceBreakdown: LeadSourceBreakdown[];
+  dataQuality: DataQualityMetric[];
+  stateBreakdown: StateBreakdown[];
+  callAttemptsDistribution: CallAttemptsBucket[];
+  transactionRevenue: TransactionRevenue[];
+  generatedAt: string;
+}
