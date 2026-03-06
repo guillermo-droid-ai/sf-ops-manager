@@ -5,6 +5,7 @@ import { AlertsFeed } from '@/components/dashboard/AlertsFeed';
 import { PipelineBar } from '@/components/dashboard/PipelineBar';
 import { RepScorecard } from '@/components/dashboard/RepScorecard';
 import { BlockedTransactions } from '@/components/dashboard/BlockedTransactions';
+import VoiceWidget from '@/components/dashboard/VoiceWidget';
 import { DrillDownPanel } from '@/components/dashboard/DrillDownPanel';
 import { ToastContainer, useToast } from '@/components/ui/Toast';
 import type { DashboardData, Alert, BlockedTransaction } from '@/lib/types';
@@ -242,6 +243,9 @@ export default function Dashboard() {
 
       {/* Toasts */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* Voice Widget */}
+      <VoiceWidget />
     </div>
   );
 }
