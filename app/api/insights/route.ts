@@ -17,7 +17,8 @@ interface PathCount {
 }
 
 interface OwnerCount {
-  Owner: { Name: string };
+  Owner?: { Name: string };
+  'Owner.Name'?: string;
   cnt: number;
 }
 
@@ -71,9 +72,9 @@ export async function GET() {
         "SELECT COUNT(Id) cnt FROM Left_Main__Transactions__c WHERE Left_Main__Closing_Date__c <= NEXT_N_DAYS:7 AND Left_Main__Path__c NOT IN ('Closed/Won','Closed/Memo','Cancelled Contract/Lost','Closed - Realtor Referral')"
       ),
 
-      // Rep stale analysis
-      sfQuery<OwnerCount>(
-        'SELECT Owner.Name, COUNT(Id) cnt FROM Lead WHERE IsConverted=false AND LastActivityDate < LAST_N_DAYS:14 GROUP BY Owner.Name ORDER BY COUNT(Id) DESC LIMIT 3'
+      // Rep stale analysis — use OwnerId then resolve name separately
+      sfQuery<{ OwnerId: string; cnt: number }>(
+        'SELECT OwnerId, COUNT(Id) cnt FROM Lead WHERE IsConverted=false AND LastActivityDate < LAST_N_DAYS:14 GROUP BY OwnerId ORDER BY COUNT(Id) DESC LIMIT 3'
       ),
     ]);
 
@@ -225,13 +226,20 @@ export async function GET() {
       });
     }
 
-    // 8. Stale leads by rep
-    const topStaleRep = staleByOwner[0];
+    // 8. Stale leads by rep — resolve OwnerId to name
+    const topStaleRep = (staleByOwner as unknown as { OwnerId: string; cnt: number }[])[0];
     if (topStaleRep && topStaleRep.cnt > 100) {
+      let repName = 'A rep';
+      try {
+        const userRows = await sfQuery<{ Name: string }>(
+          `SELECT Name FROM User WHERE Id = '${topStaleRep.OwnerId}' LIMIT 1`
+        );
+        if (userRows[0]) repName = userRows[0].Name;
+      } catch { /* ignore */ }
       insights.push({
         type: 'warning',
         icon: '👤',
-        title: `${topStaleRep.Owner.Name} has ${topStaleRep.cnt.toLocaleString()} stale leads`,
+        title: `${repName} has ${topStaleRep.cnt.toLocaleString()} stale leads`,
         detail: `Leads with no activity in 14+ days. Consider reassigning or reviewing workload.`,
       });
     }
