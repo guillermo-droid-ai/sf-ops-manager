@@ -11,6 +11,7 @@ import { ToastContainer, useToast } from '@/components/ui/Toast';
 import type { DashboardData, Alert, BlockedTransaction } from '@/lib/types';
 
 type DrillType = 'leads' | 'opportunities' | 'transactions';
+type ActiveTab = 'all' | 'leads' | 'opportunities' | 'transactions';
 
 interface DrillState {
   isOpen: boolean;
@@ -34,6 +35,8 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toasts, show: showToast, remove: removeToast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('all');
 
   const [drill, setDrill] = useState<DrillState>({
     isOpen: false,
@@ -188,39 +191,71 @@ export default function Dashboard() {
       {/* Alerts */}
       <AlertsFeed alerts={data.alerts} onAlertClick={handleAlertClick} />
 
-      {/* Pipeline Bars */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        <PipelineBar
-          title="Leads"
-          total={data.leads.total}
-          segments={data.leads.byStatus.map(s => ({
-            label: s.status,
-            count: s.count,
-            color: ''
-          }))}
-          warningText={leadWarning}
-          onSegmentClick={handleLeadStatusClick}
-        />
-        <PipelineBar
-          title="Opportunities"
-          total={data.opportunities.total}
-          segments={data.opportunities.byStage.map(s => ({
-            label: s.stage,
-            count: s.count,
-            color: ''
-          }))}
-          onSegmentClick={handleOppStageClick}
-        />
-        <PipelineBar
-          title="Transactions"
-          total={data.transactions.total}
-          segments={data.transactions.byPath.map(p => ({
-            label: p.path,
-            count: p.count,
-            color: ''
-          }))}
-          onSegmentClick={handleTransPathClick}
-        />
+      {/* Tab Navigation */}
+      <div className="flex gap-1 mb-6 bg-gray-900 p-1 rounded-xl border border-gray-800 w-fit">
+        {(['all', 'leads', 'opportunities', 'transactions'] as ActiveTab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-5 py-2 rounded-lg text-sm font-medium transition-all capitalize ${
+              activeTab === tab
+                ? 'bg-blue-600 text-white shadow'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            {tab === 'all' ? 'Overview' : tab}
+            {tab === 'leads' && (
+              <span className="ml-1.5 text-xs opacity-70">{data.leads.total.toLocaleString()}</span>
+            )}
+            {tab === 'opportunities' && (
+              <span className="ml-1.5 text-xs opacity-70">{data.opportunities.total.toLocaleString()}</span>
+            )}
+            {tab === 'transactions' && (
+              <span className="ml-1.5 text-xs opacity-70">{data.transactions.total.toLocaleString()}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Pipeline Bars — show based on active tab */}
+      <div className={`grid gap-4 mb-6 ${activeTab === 'all' ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'}`}>
+        {(activeTab === 'all' || activeTab === 'leads') && (
+          <PipelineBar
+            title="Leads"
+            total={data.leads.total}
+            segments={data.leads.byStatus.map(s => ({
+              label: s.status,
+              count: s.count,
+              color: ''
+            }))}
+            warningText={leadWarning}
+            onSegmentClick={handleLeadStatusClick}
+          />
+        )}
+        {(activeTab === 'all' || activeTab === 'opportunities') && (
+          <PipelineBar
+            title="Opportunities"
+            total={data.opportunities.total}
+            segments={data.opportunities.byStage.map(s => ({
+              label: s.stage,
+              count: s.count,
+              color: ''
+            }))}
+            onSegmentClick={handleOppStageClick}
+          />
+        )}
+        {(activeTab === 'all' || activeTab === 'transactions') && (
+          <PipelineBar
+            title="Transactions"
+            total={data.transactions.total}
+            segments={data.transactions.byPath.map(p => ({
+              label: p.path,
+              count: p.count,
+              color: ''
+            }))}
+            onSegmentClick={handleTransPathClick}
+          />
+        )}
       </div>
 
       {/* Rep Scorecard */}
@@ -229,7 +264,9 @@ export default function Dashboard() {
       </div>
 
       {/* Blocked Transactions */}
-      <BlockedTransactions transactions={data.blockedTransactions} />
+      {(activeTab === 'all' || activeTab === 'transactions') && (
+        <BlockedTransactions transactions={data.blockedTransactions} />
+      )}
 
       {/* Drill-down Panel */}
       <DrillDownPanel
