@@ -216,8 +216,38 @@ export async function POST(req: Request) {
         break;
       }
 
+      case 'search_leads': {
+        const { first_name, last_name, missing_field, city, state } = body as QueryBody & {
+          first_name?: string; last_name?: string; missing_field?: string; city?: string; state?: string;
+        };
+        const conditions: string[] = ['IsConverted=false'];
+        if (first_name) conditions.push(`FirstName LIKE '%${first_name.replace(/'/g,"\\''")}%'`);
+        if (last_name) conditions.push(`LastName LIKE '%${last_name.replace(/'/g,"\\''")}%'`);
+        if (city) conditions.push(`City LIKE '%${city.replace(/'/g,"\\''")}%'`);
+        if (state) conditions.push(`State = '${state.replace(/'/g,"\\'")}'`);
+        if (status) conditions.push(`Status = '${status.replace(/'/g,"\\'")}'`);
+        if (missing_field === 'address') conditions.push(`Street=null AND City=null AND State=null`);
+        if (missing_field === 'email') conditions.push(`Email=null AND Secondary_Email__c=null`);
+        if (missing_field === 'phone') conditions.push(`Phone=null AND MobilePhone=null AND Phone_2__c=null`);
+
+        const rows = await sfQuery<LeadRecord>(
+          `SELECT Id, Name, Status, Owner.Name, Phone, Email, Street, City, State, LastActivityDate, of_Call_Attempts__c
+           FROM Lead
+           WHERE ${conditions.join(' AND ')}
+           ORDER BY LastActivityDate ASC NULLS FIRST
+           LIMIT ${limit}`
+        );
+        result = rows.length
+          ? `Found ${rows.length} leads matching your search:\n` +
+            rows.map((r, i) =>
+              `${i+1}. ${r.Name} — ${r.Status} — ${r.City || 'no city'}, ${r.State || 'no state'} — ${r.Phone || 'no phone'} — ${r.of_Call_Attempts__c || 0} calls — Rep: ${r['Owner.Name']}`
+            ).join('\n')
+          : 'No leads found matching those filters.';
+        break;
+      }
+
       default:
-        result = `Unknown query type: ${query_type}. Available types: stale_leads_by_rep, leads_by_rep, leads_by_status, blocked_transactions, closing_soon, top_reps_by_stale, opportunities_by_stage, never_called_leads`;
+        result = `Unknown query type: ${query_type}. Available types: stale_leads_by_rep, leads_by_rep, leads_by_status, blocked_transactions, closing_soon, top_reps_by_stale, opportunities_by_stage, never_called_leads, search_leads`;
     }
 
     return NextResponse.json({ result });
